@@ -101,16 +101,31 @@ class JavaP::Generator
     elsif idx = type.index('>')
       x = type[0...idx]
       add_dependency(x) unless x.empty?
-    elsif !generated.includes?(type) && !dependencies.includes?(type)
+    elsif !generated.includes?(type) && !dependencies.includes?(type) && type.includes?('.')
       dependencies << type
     end
   end
 
   def javap(class_name)
-    stdout, stderr = IO::Memory.new, IO::Memory.new
-    status = Process.run("javap", {"-s", class_name}, output: stdout, error: stderr)
-    raise stderr.to_s unless status.success?
-    stdout.to_s
+    cache("#{class_name}.java") do
+      stdout, stderr = IO::Memory.new, IO::Memory.new
+      status = Process.run("javap", {"-s", class_name}, output: stdout, error: stderr)
+      raise stderr.to_s unless status.success?
+      stdout.to_s
+    end
+  end
+
+  private def cache(filename)
+    path = File.join("tmp", "cache", filename)
+    if File.exists?(path)
+      File.read(path)
+    else
+      yield.tap do |contents|
+        parent = File.dirname(path)
+        Dir.mkdir_p(parent) unless Dir.exists?(parent)
+        File.write(path, contents)
+      end
+    end
   end
 end
 
