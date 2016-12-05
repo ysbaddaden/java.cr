@@ -2,6 +2,10 @@ module JNI
   class JObject
     protected getter this : LibJNI::JObject
 
+    def self.new(obj : JObject)
+      new(obj.to_unsafe)
+    end
+
     def initialize(this : LibJNI::JObject)
       @this = JNI.call(:newGlobalRef, this)
     end
@@ -19,7 +23,11 @@ module JNI
     end
 
     def ==(other : JObject)
-      JNI.call(:isSameObject, this, other.to_unsafe) == LibJNI::TRUE
+      self == other.to_unsafe
+    end
+
+    def ==(other : LibJNI::JObject)
+      JNI.call(:isSameObject, this, other) == LibJNI::TRUE
     end
 
     def ==(other)

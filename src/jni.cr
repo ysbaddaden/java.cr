@@ -18,6 +18,8 @@ module JNI
   alias JFloat = LibJNI::JFloat
   alias JDouble = LibJNI::JDouble
 
+  NULL = Pointer(Void*).null.as(LibJNI::JObject)
+
   VERSION_1_1 = LibJNI::VERSION_1_1
   VERSION_1_2 = LibJNI::VERSION_1_2
   VERSION_1_4 = LibJNI::VERSION_1_4
@@ -57,6 +59,13 @@ module JNI
         raise "FATAL: unknown return value for JavaVM->GetEnv: #{ret}"
       end
     end
+  end
+
+  def self.env=(env)
+    if @@env[Thread.current.to_unsafe]?
+      raise "FATAL: JNI.env already set for the current thread"
+    end
+    @@env[Thread.current.to_unsafe] = env
   end
 
   # FIXME: detach thread from JavaVM before it terminates
