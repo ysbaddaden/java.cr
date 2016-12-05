@@ -1,0 +1,14 @@
+name: java
+version: 0.1.0
+
+authors:
+  - Julien Portalier <julien@portalier.com>
+
+description: |
+  Crystal bindings generator for Java Native Interface (JNI)
+
+targets:
+  generator:
+    main: src/generator.cr
+
+license: Apache-2.0
