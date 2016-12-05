@@ -8,7 +8,7 @@ module JavaP
     getter visibility : String
     getter abstract : Bool
     getter class_name : String
-    getter extends : String?
+    getter extends : Array(String)
     getter implements : Array(String)
     getter fields : Array(Field)
     getter methods : Array(Method)
@@ -31,6 +31,7 @@ module JavaP
       @class_name = @source = ""
       @interface = @abstract = false
       @visibility = "public"
+      @extends = [] of String
       @implements = [] of String
       @buffer = [] of Char | String
       @fields = [] of Field
@@ -76,11 +77,11 @@ module JavaP
           @visibility = token.to_s
         when "abstract"
           @abstract = true
-        when "class"
+        when "class", ""
           break
         when "interface"
           @interface = true
-          return
+          break
         when "final"
           # skip
         else
@@ -93,7 +94,7 @@ module JavaP
       loop do
         case token = lex
         when "extends"
-          @extends = parse_type
+          parse_extends
         when "implements"
           parse_implements
         when '{'
@@ -113,7 +114,7 @@ module JavaP
         args = [] of String
         throws = [] of String
 
-        if peek == "static" && peek(2) == '{'
+        if peek == '}' || (peek == "static" && peek(2) == '{')
           return
         end
 
@@ -158,7 +159,8 @@ module JavaP
         parse_types(args, ')')
 
         if args.last?.try(&.ends_with?("..."))
-          args << args.pop[0...-3]
+          arg = args.pop[0...-3]
+          args << arg unless arg.empty?
           variadic = true
         end
 
@@ -181,6 +183,18 @@ module JavaP
       expect "descriptor"
       expect ':'
       lexer.next_descriptor
+    end
+
+    private def parse_extends
+      loop do
+        extends << parse_type
+        case peek
+        when ','
+          skip
+        when '{', "implements"
+          break
+        end
+      end
     end
 
     private def parse_implements
@@ -218,8 +232,15 @@ module JavaP
     private def parse_type(str : String::Builder, nested = 0)
       case peek
       when "extends"
-        until lex == '>'
-          # skip
+        deep = 1
+        loop do
+          case lex
+          when '>'
+            deep -= 1
+            break if deep == 0
+          when '<'
+            deep += 1
+          end
         end
       when String
         str << lex.to_s
@@ -260,11 +281,13 @@ module JavaP
 
     private def peek
       if token = @buffer.first?
+        #p [:peek, token]
         token
       else
         if token = lexer.next
           @buffer << token
         end
+        #p [:peek, token]
         token
       end
     end
