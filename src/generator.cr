@@ -37,7 +37,7 @@ class JavaP::Generator
       exit
     end
 
-    filename = class_name.gsub('$', '.').split('.').map(&.underscore).join('/')
+    filename = class_name.gsub('$', '_').split('.').map(&.underscore).join('/')
     path = File.join(Dir.current, options.output, "#{filename}.cr")
 
     if File.exists?(path) && !options.force
@@ -103,6 +103,10 @@ class JavaP::Generator
       add_dependency(x) unless x.empty?
     elsif !generated.includes?(type) && !dependencies.includes?(type) && type.includes?('.')
       dependencies << type
+
+      if idx = type.index('$')
+        add_dependency(type[0...idx])
+      end
     end
   end
 

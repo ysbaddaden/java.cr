@@ -19,6 +19,8 @@ module JNI
   alias JDouble = LibJNI::JDouble
 
   NULL = Pointer(Void*).null.as(LibJNI::JObject)
+  TRUE = LibJNI::TRUE
+  FALSE = LibJNI::FALSE
 
   VERSION_1_1 = LibJNI::VERSION_1_1
   VERSION_1_2 = LibJNI::VERSION_1_2
