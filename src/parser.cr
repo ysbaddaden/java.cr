@@ -13,6 +13,7 @@ module JavaP
     getter fields : Array(Field)
     getter methods : Array(Method)
     getter interface : Bool
+    getter all_types : Set(String)
 
     private getter lexer
 
@@ -36,6 +37,7 @@ module JavaP
       @buffer = [] of Char | String
       @fields = [] of Field
       @methods = [] of Method
+      @all_types = Set(String).new
     end
 
     def abstract?
@@ -223,9 +225,11 @@ module JavaP
     end
 
     private def parse_type(generic = false)
-      String.build do |str|
+      type = String.build do |str|
         parse_type(str, generic ? 1 : 0)
       end
+      add_type(type) if type.includes?('.')
+      type
     end
 
     # TODO: wildcards
@@ -244,20 +248,35 @@ module JavaP
         end
       when String
         str << lex.to_s
-        if peek == '<' || (nested > 0 && [',', '>', "extends"].includes?(peek))
+        token = peek
+        if token == '<' || (nested > 0 && [',', '>', "extends"].includes?(token))
           parse_type(str, nested + 1)
+          while peek == '>'
+            str << lex
+          end
         end
       when '<'
-        skip
-        str << '<'
+        str << lex
         parse_type(str, nested)
-        str << '>'
       when ','
         skip
         str << ", "
         parse_type(str, nested)
       when '>'
-        skip
+        str << lex
+      end
+    end
+
+    private def add_type(str)
+      if str.includes?('.') && str != class_name
+        str.split(',').each do |t|
+          t = t.strip
+          if t.ends_with?("[]")
+            @all_types << t[0...-2]
+          else
+            @all_types << t
+          end
+        end
       end
     end
 

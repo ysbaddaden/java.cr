@@ -3,82 +3,62 @@ require "./parser"
 module JavaP
   class Formatter
     private getter parser : Parser
-    getter all_types
 
-    def initialize(@parser)
+    @types : Hash(String, Parser)
+
+    def initialize(@parser, @types)
       @forall = [] of String
-      @all_types = Set(String).new
     end
 
     def to_crystal(io)
-      #io.puts "require \"java/jni\"\n\n"
-
       namespace = parser.class_name.split('.')
       class_name = namespace.pop
 
-      # hard requirements (namespace, extends, implements)
-
-      parser.extends.each do |type|
-        path = type.split('.').map(&.underscore).join('/')
-        path = ("../" * namespace.size) + path.gsub('$', '_')
-        io.puts "require #{path.inspect}"
-      end
-
-      parser.implements.each do |type|
-        path = type.split('.').map(&.underscore).join('/')
-        path = ("../" * namespace.size) + path.gsub('$', '_')
-        io.puts "require #{path.inspect}"
-      end
-
-      if idx = class_name.index('$')
-        io.puts "require \"./#{class_name[0...idx].underscore}\""
-      end
+      # require
+      format_requires(namespace, class_name, io)
 
       # class definition
 
       namespace.each_with_index do |ns, i|
-        io.puts "module #{to_type(ns)}"
+        io.puts "module #{to_type(ns, force: true)}"
         io.puts "include JNI\n\n" if i == 0
       end
 
-      # java classes and interfaces both become Crystal classes
-      io.print "class #{to_type(class_name)}"
-      if type = parser.extends.first?
-        io.puts " < #{to_type(type, exact: true)}"
-      else
-        io.puts " < JNI::JObject"
-      end
-
-      # FIXME: A Java class may extend many classes, but Crytal can't extend
-      #        multiple types, only inherit from a single class.
-      #
-      #        Maybe we should load/parse dependent classes/interfaces then
-      #        generate bindings, knowing which type is an interface and which
-      #        is a class, thus adding type restrictions in method arguments
-      #        accordingly.
-      #
-      #        Java interfaces would become modules, and be included into a
-      #        specific Module::Name::Interface class that would be instanciated
-      #        for cases where an interface is returned.
-      #
-      #        For now interfaces become a class, and generated methods don't
-      #        have any type restriction for objects, except for the generic
-      #        JNI::JObject.
-
-      # add following extends types, so actual classes are accepted for
-      # interface restricted method arguments
-      if parser.extends.size > 1
-        parser.extends[1..-1].each do |type|
-          io.puts "# extend #{to_type(type, exact: true)}"
+      if parser.interface?
+        # interfaces become a module (eg: argument restriction)
+        name = to_type(class_name, force: true)
+        io.puts "module #{name}"
+        parser.extends.each do |type|
+          io.puts "include #{to_type(type, exact: true)}"
         end
-      end
+        io.puts
 
-      # extend implement types, so actual classes are accepted for
-      # interface restricted method arguments
-      parser.implements.each do |type|
-        io.puts "# extend #{to_type(type, exact: true)}"
+        # interfaces also become a class that include the above module (used for
+        # wrapping return types)
+        io.puts "class InterfaceObject < JObject"
+        io.puts "include #{name}"
+        io.puts "end"
+        io.puts
+      else
+        # classes simply become a class
+        io.print "class #{to_type(class_name, force: true)}"
+        if type = parser.extends.first?
+          io.puts " < #{to_type(type, exact: true, force: true)}"
+        else
+          io.puts " < JObject"
+        end
+
+        #if parser.extends.size > 1
+        #  parser.extends[1..-1].each do |type|
+        #    io.puts "# extend #{to_type(type, exact: true)}"
+        #  end
+        #end
+
+        parser.implements.each do |type|
+          io.puts "include #{to_type(type, exact: true)}"
+        end
+        io.puts
       end
-      io.puts
 
       unless parser.interface?
         io.puts <<-JCLASS
@@ -103,18 +83,46 @@ module JavaP
       end
     end
 
+    private def format_requires(namespace, class_name, io)
+      requires = Set(String).new
+
+      parser.extends.each do |type|
+        requires << type
+      end
+
+      parser.implements.each do |type|
+        requires << type
+      end
+
+      parser.all_types.each do |type|
+        if @types.has_key?(type)
+          requires << type
+        end
+      end
+
+      io.puts "require \"java/jni\""
+
+      requires.to_a.sort.each do |type|
+        path = type.split('.').map(&.underscore).join('/')
+        path = ("../" * namespace.size) + path.gsub('$', '_')
+        io.puts "require #{path.inspect}"
+      end
+
+      if idx = class_name.index('$')
+        io.puts "require \"./#{class_name[0...idx].underscore}\""
+      end
+    end
+
     private def to_arg_type(str)
       if str == "boolean"
         "Bool"
       else
         name = to_type(str)
-        # TODO: restrict jobject argument type (requires to deal with interfaces, see above)
-        #name.includes?("::") ? "#{name}?" : name
-        name.includes?("::") ? "JNI::JObject?" : name
+        name.includes?("::") ? "#{name}?" : name
       end
     end
 
-    private def to_type(str, exact = false)
+    private def to_type(str, exact = false, force = false)
       case str
       when "boolean", "byte", "char", "short", "int", "long", "float", "double"
         # primitive
@@ -123,43 +131,59 @@ module JavaP
         # FIXME: maybe the Crystal String class should extend `java.lang.CharSequence` instead?
         #        that would be accepted in arguments, and return types should
         #        assume the `java.lang.CharSequence` to be a `String`?
-        exact ? to_crystal_type(str) : "String"
+        exact ? to_crystal_type(str, force) : "String"
       when .starts_with?('?')
         "W#{@forall.size}".tap { |type| @forall << type }
       else
         if str.ends_with?("...")
           # variadic (last argument)
-          "#{to_type(str[0...-3])}..."
+          "#{to_type(str[0...-3], force)}..."
         elsif str.ends_with?("[]")
-          # array
-          "Array(#{to_type(str[0...-2])})"
-        elsif (idx = str.index('<')) && str.ends_with?('>')
-          # generic
-          type = to_type(str[0...idx])
-          generic = str[(idx + 1)...-1]
-            .split(", ")
-            .map { |t| to_type(t).as(String) }
-            .join(", ")
-          "#{type}(#{generic})"
+          "Array(#{to_type(str[0...-2], force)})"
+        elsif str.includes?('<') || str.includes?(',')
+          to_generic_type(str, force)
         else
-          # namespace
-          add_type(str)
-          to_crystal_type(str)
+          to_crystal_type(str, force)
         end
       end
     end
 
-    private def to_crystal_type(str)
-      str
-        .split('.')
-        .map(&.camelcase)
-        .join("::")
-        .gsub('$', '_')
+    private def to_generic_type(type, force)
+      parts = type.gsub('$', '_').split(/([<>, ?])/)
+
+      unless force || @types.has_key?(parts.first)
+        return "JObject"
+      end
+
+      String.build do |str|
+        parts.each do |word|
+          case word
+          when "<"
+            str << '('
+          when ">"
+            str << ')'
+          when ","
+            str << ", "
+          when "?"
+            # FIXME: invalid for return type
+            str << "W#{@forall.size}".tap { |type| @forall << type }
+          when "", " "
+            # skip
+          else
+            str << to_type(word, force)
+          end
+        end
+      end
     end
 
-    private def add_type(str)
-      if str.includes?('.') && str != parser.class_name
-        @all_types << str
+    private def to_crystal_type(type, force)
+      if force || @types.has_key?(type)
+        type.split('.')
+          .map(&.camelcase)
+          .join("::")
+          .gsub('$', '_')
+      else
+        "JObject"
       end
     end
 
@@ -237,7 +261,7 @@ module JavaP
 
       m.args.each_with_index do |arg, i|
         type = to_type(arg)
-        io.puts "# NOTE: *x#{i}* : `#{type}` | Nil" if type.includes?("::")
+        io.puts "# NOTE: *x#{i}* is actually a `#{arg}`" if type == "JObject"
       end
 
       if m.throws.any?
@@ -299,10 +323,14 @@ module JavaP
     private def wrap_return_type(x, ret, io)
       case x.jni_method_name
       when .includes?("Object")
-        if x.type == "String"
+        if x.type == "java.lang.String" || x.type == "java.lang.CharSequence"
           io.puts "JNI.to_string(#{ret})"
         else
-          io.puts "#{to_type(x.type.to_s)}.new(#{ret})"
+          if @types[x.type.to_s]?.try(&.interface?)
+            io.puts "#{to_type(x.type.to_s)}::InterfaceObject.new(#{ret})"
+          else
+            io.puts "#{to_type(x.type.to_s)}.new(#{ret})"
+          end
         end
       when .includes?("Boolean")
         io.puts "#{ret} == TRUE"
