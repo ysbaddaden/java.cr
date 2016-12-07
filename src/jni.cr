@@ -45,7 +45,7 @@ module JNI
 
   @@env = {} of LibC::PthreadT => LibJNI::Env*
 
-  # Alaways returns a valid JNI::Env* for the curent thread.
+  # Always returns a valid JNI::Env* for the curent thread.
   def self.env
     @@env[Thread.current.to_unsafe] ||= begin
       env = uninitialized LibJNI::Env**
@@ -57,6 +57,8 @@ module JNI
         attach_current_thread
       when LibJNI::EVERSION
         raise "FATAL: unsupported JNI version (0x#{version.to_s(16)})"
+      when LibJNI::ERR
+        raise "FATAL: failed to get JNI env (JavaVM->GetEnv)"
       else
         raise "FATAL: unknown return value for JavaVM->GetEnv: #{ret}"
       end

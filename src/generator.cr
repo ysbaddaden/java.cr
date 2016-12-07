@@ -13,6 +13,7 @@ module JavaP
       property types
       property save
       property cache
+      property quiet
 
       def initialize
         @output = "bindings"
@@ -22,6 +23,7 @@ module JavaP
         @debug = false
         @save = true
         @cache = true
+        @quiet = false
       end
     end
 
@@ -36,8 +38,10 @@ module JavaP
 
     def load(type)
       @types[type] ||= begin
-        print "Loading".colorize(:dark_gray)
-        puts " #{type}"
+        unless options.quiet
+          print "Loading".colorize(:dark_gray)
+          puts " #{type}"
+        end
         Parser.parse(javap(type)).tap do |parser|
           parser.all_types.each { |type| add_dependency(type) }
         end
@@ -49,11 +53,15 @@ module JavaP
       path = File.join(Dir.current, options.output, "#{filename}.cr")
 
       if File.exists?(path) && !options.force
-        print "Exists".colorize(:green)
-        puts " #{type} => #{path}"
+        unless options.quiet
+          print "Exists".colorize(:green)
+          puts " #{type} => #{path}"
+        end
       else
-        print "Generating".colorize(:yellow)
-        puts " #{type} => #{path}"
+        unless options.quiet
+          print "Generating".colorize(:yellow)
+          puts " #{type} => #{path}"
+        end
         code = transform(type)
         dirname = File.dirname(path)
         Dir.mkdir_p(dirname) unless Dir.exists?(dirname)
@@ -159,6 +167,10 @@ OptionParser.parse! do |opts|
 
   opts.on("--no-save", "Don't save generated bindings on disk") do
     options.save = false
+  end
+
+  opts.on("--quiet", "Don't output anything (but errors)") do
+    options.quiet = true
   end
 
   opts.unknown_args do |args, _|

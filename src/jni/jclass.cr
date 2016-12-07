@@ -26,6 +26,10 @@ module JNI
       JNI.call(:getFieldID, this, name.to_unsafe, descriptor.to_unsafe)
     end
 
+    def static_method_id(name, descriptor)
+      JNI.call(:getStaticMethodID, this, name.to_unsafe, descriptor.to_unsafe)
+    end
+
     def method_id(name, descriptor)
       JNI.call(:getMethodID, this, name.to_unsafe, descriptor.to_unsafe)
     end

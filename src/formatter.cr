@@ -29,7 +29,9 @@ module JavaP
         name = to_type(class_name, force: true)
         io.puts "module #{name}"
         parser.extends.each do |type|
-          io.puts "include #{to_type(type, exact: true)}"
+          if @types.has_key?(type)
+            io.puts "include #{to_type(type, exact: true)}"
+          end
         end
         io.puts
 
@@ -42,7 +44,7 @@ module JavaP
       else
         # classes simply become a class
         io.print "class #{to_type(class_name, force: true)}"
-        if type = parser.extends.first?
+        if (type = parser.extends.first?) && @types.has_key?(type)
           io.puts " < #{to_type(type, exact: true, force: true)}"
         else
           io.puts " < JObject"
@@ -50,12 +52,16 @@ module JavaP
 
         #if parser.extends.size > 1
         #  parser.extends[1..-1].each do |type|
-        #    io.puts "# extend #{to_type(type, exact: true)}"
+        #    if @types.has_key?(type)
+        #      io.puts "# extend #{to_type(type, exact: true)}"
+        #    end
         #  end
         #end
 
         parser.implements.each do |type|
-          io.puts "include #{to_type(type, exact: true)}"
+          if @types.has_key?(type)
+            io.puts "include #{to_type(type, exact: true)}"
+          end
         end
         io.puts
       end
@@ -63,7 +69,8 @@ module JavaP
       unless parser.interface?
         io.puts <<-JCLASS
         def self.jclass
-          @@jclass ||= JClass.new("#{parser.descriptor}")
+          # @@jclass ||= JClass.new("#{parser.descriptor}")
+          JClass.new("#{parser.descriptor}")
         end\n\n
         JCLASS
       end
@@ -87,18 +94,24 @@ module JavaP
       requires = Set(String).new
 
       parser.extends.each do |type|
-        requires << type
-      end
-
-      parser.implements.each do |type|
-        requires << type
-      end
-
-      parser.all_types.each do |type|
         if @types.has_key?(type)
           requires << type
         end
       end
+
+      parser.implements.each do |type|
+        if @types.has_key?(type)
+          requires << type
+        end
+      end
+
+      # FIXME: requiring everything eventually leads to issues in load order.
+      #        for example A -> B -> A will fail if A includes B.
+      #parser.all_types.each do |type|
+      #  if @types.has_key?(type)
+      #    requires << type
+      #  end
+      #end
 
       io.puts "require \"java/jni\""
 
@@ -305,14 +318,21 @@ module JavaP
 
       # method handle
 
+      # OPTIMIZE: local memoization
+      io.puts "klass = self.jclass"
+
       # call jni method
       if parser.constructor?(m)
         io.puts "mid = jclass.method_id(\"<init>\", #{m.descriptor.inspect})"
         io.puts "new JNI.call(:newObjectA, jclass.to_unsafe, mid, #{args})"
       else
-        io.puts "mid = jclass.method_id(#{m.java_name.inspect}, #{m.descriptor.inspect})"
-        object = m.static? ? "jclass.to_unsafe" : "this"
-        io.puts "ret = JNI.call(:#{m.jni_method_name}, #{object}, mid, #{args})"
+        if m.static?
+          io.puts "mid = jclass.static_method_id(#{m.java_name.inspect}, #{m.descriptor.inspect})"
+          io.puts "ret = JNI.call(:#{m.jni_method_name}, jclass.to_unsafe, mid, #{args})"
+        else
+          io.puts "mid = jclass.method_id(#{m.java_name.inspect}, #{m.descriptor.inspect})"
+          io.puts "ret = JNI.call(:#{m.jni_method_name}, this, mid, #{args})"
+        end
         wrap_return_type(m, "ret", io)
       end
 
