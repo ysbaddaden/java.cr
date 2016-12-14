@@ -48,6 +48,12 @@ module JavaP
       @interface
     end
 
+    def generic?
+      if idx = class_name.index('<')
+        class_name[(idx + 1)...-1]
+      end
+    end
+
     def parse
       parse_source
       parse_class

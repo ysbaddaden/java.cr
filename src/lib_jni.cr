@@ -372,15 +372,17 @@ lib LibJNI
     functions : InvokeInterface*
   end
 
-  # getDefaultJavaVMInitArgs = JNI_GetDefaultJavaVMInitArgs(Void*)
-  # createJavaVM = JNI_CreateJavaVM(JavaVM**, Env**, Void*)
-  # getCreatedJavaVMs = JNI_GetCreatedJavaVMs(JavaVM**, Size, Size*)
+  {% unless flag?(:android) %}
+    fun getDefaultJavaVMInitArgs = JNI_GetDefaultJavaVMInitArgs(JavaVMInitArgs*) : JInt
+    fun createJavaVM = JNI_CreateJavaVM(JavaVM**, Env**, JavaVMInitArgs*) : JInt
+    #fun getCreatedJavaVMs = JNI_GetCreatedJavaVMs(JavaVM**, LibC::SizeT, LibC::SizeT*) : JInt
+  {% end %}
 
   fun onLoad = JNI_OnLoad(vm : JavaVM*, reserved : Void*) : JInt
   fun onUnload = JNI_OnUnload(vm : JavaVM*, reserved : Void*) : Void
 
-  FALSE = 0
-  TRUE  = 1
+  FALSE = 0_u8
+  TRUE  = 1_u8
 
   VERSION_1_1 = 0x00010001
   VERSION_1_2 = 0x00010002

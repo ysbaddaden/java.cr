@@ -7,11 +7,11 @@ module JNI
     end
 
     def initialize(this : LibJNI::JObject)
-      @this = JNI.call(:newGlobalRef, this)
+      @this = JNI.lock(&.newGlobalRef(this))
     end
 
     def finalize
-      JNI.call(:deleteGlobalRef, this)
+      JNI.lock(&.deleteGlobalRef(this))
     end
 
     def jclass
@@ -27,7 +27,7 @@ module JNI
     end
 
     def ==(other : LibJNI::JObject)
-      JNI.call(:isSameObject, this, other) == LibJNI::TRUE
+      JNI.lock(&.isSameObject(this, other)) == LibJNI::TRUE
     end
 
     def ==(other)

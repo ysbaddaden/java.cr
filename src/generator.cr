@@ -14,6 +14,7 @@ module JavaP
       property save
       property cache
       property quiet
+      property verbose
 
       def initialize
         @output = "bindings"
@@ -24,6 +25,7 @@ module JavaP
         @save = true
         @cache = true
         @quiet = false
+        @verbose = false
       end
     end
 
@@ -38,7 +40,7 @@ module JavaP
 
     def load(type)
       @types[type] ||= begin
-        unless options.quiet
+        if options.verbose
           print "Loading".colorize(:dark_gray)
           puts " #{type}"
         end
@@ -53,7 +55,7 @@ module JavaP
       path = File.join(Dir.current, options.output, "#{filename}.cr")
 
       if File.exists?(path) && !options.force
-        unless options.quiet
+        if options.verbose
           print "Exists".colorize(:green)
           puts " #{type} => #{path}"
         end
@@ -171,6 +173,12 @@ OptionParser.parse! do |opts|
 
   opts.on("--quiet", "Don't output anything (but errors)") do
     options.quiet = true
+    options.verbose = false
+  end
+
+  opts.on("--verbose", "Increasd output verbosity (what is loaded, generated, ...)") do
+    options.quiet = false
+    options.verbose = true
   end
 
   opts.unknown_args do |args, _|

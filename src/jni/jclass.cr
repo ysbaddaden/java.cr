@@ -2,36 +2,36 @@ module JNI
   class JClass
     protected getter this : LibJNI::JClass
 
-    def self.new(object : LibJNI::JObject)
-      new JNI.call(:getObjectClass, object)
-    end
+    #def self.new(object : LibJNI::JObject)
+    #  new JNI.local(&.getObjectClass(object))
+    #end
 
     def self.new(name : String)
-      new JNI.call(:findClass, name.to_unsafe)
+      new JNI.lock(&.findClass(name))
     end
 
-    def initialize(this : LibJNI::JObject)
-      @this = JNI.call(:newGlobalRef, this)
+    def initialize(this : LibJNI::JClass)
+      @this = JNI.lock(&.newGlobalRef(this))
     end
 
     def finalize
-      JNI.call(:deleteGlobalRef, this)
+      JNI.lock(&.deleteGlobalRef(this))
     end
 
     def static_field_id(name, descriptor)
-      JNI.call(:getStaticFieldID, this, name.to_unsafe, descriptor.to_unsafe)
+      JNI.lock(&.getStaticFieldID(this, name.to_unsafe, descriptor.to_unsafe))
     end
 
     def field_id(name, descriptor)
-      JNI.call(:getFieldID, this, name.to_unsafe, descriptor.to_unsafe)
+      JNI.lock(&.getFieldID(this, name.to_unsafe, descriptor.to_unsafe))
     end
 
     def static_method_id(name, descriptor)
-      JNI.call(:getStaticMethodID, this, name.to_unsafe, descriptor.to_unsafe)
+      JNI.lock(&.getStaticMethodID(this, name.to_unsafe, descriptor.to_unsafe))
     end
 
     def method_id(name, descriptor)
-      JNI.call(:getMethodID, this, name.to_unsafe, descriptor.to_unsafe)
+      JNI.lock(&.getMethodID(this, name.to_unsafe, descriptor.to_unsafe))
     end
 
     def to_unsafe

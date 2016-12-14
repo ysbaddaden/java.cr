@@ -14,6 +14,13 @@ module JavaP
       namespace = parser.class_name.split('.')
       class_name = namespace.pop
 
+      # warning
+      io.puts <<-WARN
+      # NOTE: THIS FILE WAS AUTOMATICALLY GENERATED, DO NOT EDIT MANUALLY OR YOUR
+      #       CHANGES MAY END UP BEING OVERWRITTEN.
+      WARN
+      io.puts
+
       # require
       format_requires(namespace, class_name, io)
 
@@ -37,7 +44,11 @@ module JavaP
 
         # interfaces also become a class that include the above module (used for
         # wrapping return types)
-        io.puts "class InterfaceObject < JObject"
+        if generic = parser.generic?
+          io.puts "class InterfaceObject(#{to_type(generic, force: true)}) < JObject"
+        else
+          io.puts "class InterfaceObject < JObject"
+        end
         io.puts "include #{name}"
         io.puts "end"
         io.puts
@@ -66,14 +77,14 @@ module JavaP
         io.puts
       end
 
-      unless parser.interface?
-        io.puts <<-JCLASS
-        def self.jclass
-          # @@jclass ||= JClass.new("#{parser.descriptor}")
-          JClass.new("#{parser.descriptor}")
-        end\n\n
-        JCLASS
-      end
+      #unless parser.interface?
+      #  io.puts <<-JCLASS
+      #  def self.jclass
+      #    # @@jclass ||= JClass.new("#{parser.descriptor}")
+      #    JClass.new("#{parser.descriptor}")
+      #  end\n\n
+      #  JCLASS
+      #end
 
       parser.fields.each do |f|
         format_field(f, io)
@@ -150,18 +161,18 @@ module JavaP
       else
         if str.ends_with?("...")
           # variadic (last argument)
-          "#{to_type(str[0...-3], force)}..."
+          "#{to_type(str[0...-3], exact: exact, force: force)}..."
         elsif str.ends_with?("[]")
-          "Array(#{to_type(str[0...-2], force)})"
+          "Array(#{to_type(str[0...-2], exact: exact, force: force)})"
         elsif str.includes?('<') || str.includes?(',')
-          to_generic_type(str, force)
+          to_generic_type(str, exact, force)
         else
           to_crystal_type(str, force)
         end
       end
     end
 
-    private def to_generic_type(type, force)
+    private def to_generic_type(type, exact, force)
       parts = type.gsub('$', '_').split(/([<>, ?])/)
 
       unless force || @types.has_key?(parts.first)
@@ -183,14 +194,16 @@ module JavaP
           when "", " "
             # skip
           else
-            str << to_type(word, force)
+            str << to_type(word, exact, force)
           end
         end
       end
     end
 
     private def to_crystal_type(type, force)
-      if force || @types.has_key?(type)
+      if type == parser.generic?
+        type.camelcase
+      elsif force || @types.has_key?(type)
         type.split('.')
           .map(&.camelcase)
           .join("::")
@@ -212,33 +225,40 @@ module JavaP
 
     #private def format_field_getter(f, io)
     #  io.puts "def #{f.name}"
-    #  io.puts "fid = jclass.field_id(#{f.name.inspect}, #{f.descriptor.inspect})"
+    #  io.puts "JNI.lock do |env|"
+    #  io.puts "jclass = env.getObjectClass(this)"
+    #  io.puts "field_id = env.getFieldID(jclass, #{f.name.inspect}, #{f.descriptor.inspect})"
     #  case method = f.jni_getter_method_name
     #  when "getObjectField"
-    #    io.puts "obj = JNI.call(:#{method}, jclass.to_unsafe, fid)"
+    #    io.puts "obj = env.#{method}(jclass, field_id)"
     #    if f.type == "String"
-    #      io.puts "JNI.to_string(obj)"
+    #      io.puts "env.to_string(obj)"
     #    else
     #      io.puts "#{to_type(f.type.to_s)}.new(obj)"
     #    end
     #  else
-    #    io.puts "JNI.call(:#{method}, jclass.to_unsafe, fid)"
+    #    io.puts "env.#{method}(jclass, field_id)"
     #  end
     #  io.puts "end"
     #end
 
     #private def format_field_setter(f, io)
     #  io.puts "def #{f.name}=(value : #{to_type(f.type.to_s)})"
-    #  io.puts "JNI.call(:#{f.jni_setter_method_name}, jclass.to_unsafe, fid, value.to_unsafe)"
+    #  io.puts "JNI.lock do |env|"
+    #  io.puts "jclass = env.getObjectClass(this)"
+    #  io.puts "JNIenv.#{f.jni_setter_method_name}(jclass, field_id, value.to_unsafe)"
     #  io.puts "value"
     #  io.puts "end"
     #end
 
     private def format_static_field(f, io)
       io.puts "#{to_constant(f.name)} = begin"
-      io.puts "fid = jclass.static_field_id(#{f.name.inspect}, #{f.descriptor.inspect})"
-      io.puts "ret = JNI.call(:#{f.jni_method_name}, jclass.to_unsafe, fid)"
+      io.puts "JNI.lock do |env|"
+      io.puts "jclass = env.findClass(#{parser.descriptor.inspect})"
+      io.puts "field_id = env.getStaticFieldID(jclass, #{f.name.inspect}, #{f.descriptor.inspect})"
+      io.puts "ret = env.#{f.jni_method_name}(jclass, field_id)"
       wrap_return_type(f, "ret", io)
+      io.puts "end"
       io.puts "end"
     end
 
@@ -282,18 +302,13 @@ module JavaP
       end
 
       if parser.constructor?(m)
-        #io.print "abstract " if m.abstract?
         io.print "def self.new(#{args.join(", ")})"
       else
         name = m.name.gsub('$', '_')
-        #if m.abstract?
-        #  io.print "abstract "
-        #else
-          if m.visibility && m.visibility != "public"
-            io.print m.visibility
-            io.print ' '
-          end
-        #end
+        if m.visibility && m.visibility != "public"
+          io.print m.visibility
+          io.print ' '
+        end
         #if m.getter?
         #  io.print "def #{static}#{name.sub("get_", "")}"
         #elsif m.setter?
@@ -310,33 +325,37 @@ module JavaP
         io.puts
       end
 
-      # abstract methods don't have bodies
-      #return if m.abstract?
+      # method body
+
+      # attach JNI
+      io.puts "JNI.lock do |env|"
+
+      if m.static? || parser.constructor?(m)
+        io.puts "jclass = env.findClass(#{parser.descriptor.inspect})"
+      else
+        io.puts "jclass = env.getObjectClass(this)"
+      end
 
       # arguments as jvalue*
       args = format_args(m, io)
 
-      # method handle
-
-      # OPTIMIZE: local memoization
-      io.puts "klass = self.jclass"
-
       # call jni method
       if parser.constructor?(m)
-        io.puts "mid = jclass.method_id(\"<init>\", #{m.descriptor.inspect})"
-        io.puts "new JNI.call(:newObjectA, jclass.to_unsafe, mid, #{args})"
+        io.puts "method_id = env.getMethodID(jclass, \"<init>\", #{m.descriptor.inspect})"
+        io.puts "new env.newObjectA(jclass, method_id, #{args})"
       else
         if m.static?
-          io.puts "mid = jclass.static_method_id(#{m.java_name.inspect}, #{m.descriptor.inspect})"
-          io.puts "ret = JNI.call(:#{m.jni_method_name}, jclass.to_unsafe, mid, #{args})"
+          io.puts "method_id = env.getStaticMethodID(jclass, #{m.java_name.inspect}, #{m.descriptor.inspect})"
+          io.puts "ret = env.#{m.jni_method_name}(jclass, method_id, #{args})"
         else
-          io.puts "mid = jclass.method_id(#{m.java_name.inspect}, #{m.descriptor.inspect})"
-          io.puts "ret = JNI.call(:#{m.jni_method_name}, this, mid, #{args})"
+          io.puts "method_id = env.getMethodID(jclass, #{m.java_name.inspect}, #{m.descriptor.inspect})"
+          io.puts "ret = env.#{m.jni_method_name}(this, method_id, #{args})"
         end
         wrap_return_type(m, "ret", io)
       end
 
-      io.puts "end"
+      io.puts "end" # JNI.lock
+      io.puts "end" # method
       io.puts
     end
 
@@ -400,7 +419,7 @@ module JavaP
       when "JLong"    then io.puts "arg#{i}.j = x#{i}"
       when "JFloat"   then io.puts "arg#{i}.f = x#{i}"
       when "JDouble"  then io.puts "arg#{i}.d = x#{i}"
-      when "String"   then io.puts "arg#{i}.l = x#{i} ? JNI.call(:newStringUTF, x#{i}.to_unsafe) : NULL"
+      when "String"   then io.puts "arg#{i}.l = x#{i} ? env.newStringUTF(x#{i}.to_unsafe) : NULL"
       else                 io.puts "arg#{i}.l = x#{i} ? x#{i}.to_unsafe : NULL"
       end
     end

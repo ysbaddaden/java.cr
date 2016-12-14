@@ -1,17 +1,20 @@
 require "../jni"
 
-fun jni_onload = JNI_OnLoad(vm : JNI::JavaVM, reserved : Void*) : JNI::JInt
-  GC.init
+fun jni_onload = JNI_OnLoad(vm : LibJNI::JavaVM*, reserved : Void*) : JNI::JInt
   JNI.vm = vm
 
-  begin
-    LibCrystalMain.__crystal_main(0, nil)
-  rescue ex
-    Android.logger.error ex.message.to_s
-    ex.backtrace.each { |line| Android.logger.error "     #{line}" }
-  end
+  #Thread.new do
+    GC.init
 
-  LibJNI::VERSION_1_6
+    begin
+      LibCrystalMain.__crystal_main(0, nil)
+    rescue ex
+      Android.logger.error ex.message.to_s
+      ex.backtrace.each { |line| Android.logger.error "     #{line}" }
+    end
+
+    JNI.version
+  #end
 end
 
 # fun onUnload = JNI_OnUnload(vm : LibJNI::JavaVM*, reserved : Void*) : Void

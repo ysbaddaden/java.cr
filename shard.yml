@@ -11,4 +11,8 @@ targets:
   generator:
     main: src/generator.cr
 
+development_dependencies:
+  minitest:
+    github: ysbaddaden/minitest.cr
+
 license: Apache-2.0
