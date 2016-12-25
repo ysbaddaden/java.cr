@@ -176,7 +176,7 @@ OptionParser.parse! do |opts|
     options.verbose = false
   end
 
-  opts.on("--verbose", "Increasd output verbosity (what is loaded, generated, ...)") do
+  opts.on("--verbose", "Increase output verbosity (what is loaded, generated, ...)") do
     options.quiet = false
     options.verbose = true
   end

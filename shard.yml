@@ -5,14 +5,17 @@ authors:
   - Julien Portalier <julien@portalier.com>
 
 description: |
-  Crystal bindings generator for Java Native Interface (JNI)
+  Java Native Interface (JNI) bindings (and generator) for Crystal
+
+development_dependencies:
+  minitest:
+    github: ysbaddaden/minitest.cr
 
 targets:
   generator:
     main: src/generator.cr
 
-development_dependencies:
-  minitest:
-    github: ysbaddaden/minitest.cr
+scripts:
+  postinstall: shards build generator --release
 
 license: Apache-2.0
